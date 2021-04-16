@@ -26,7 +26,9 @@ Usage: import the module (see Jupyter notebooks for examples), or run from
     # Run COCO evaluatoin on the last model you trained
     python3 coco.py evaluate --dataset=/path/to/coco/ --model=last
 """
-
+from matplotlib import pyplot as plt
+import imageio
+import skimage
 import os
 import sys
 import time
@@ -78,7 +80,7 @@ class CocoConfig(Config):
 
     # We use a GPU with 12GB memory, which can fit two images.
     # Adjust down if you use a smaller GPU.
-    IMAGES_PER_GPU = 2
+    IMAGES_PER_GPU = 1
 
     # Uncomment to train on 8 GPUs (default is 1)
     # GPU_COUNT = 8
@@ -375,7 +377,26 @@ def evaluate_coco(model, dataset, coco, eval_type="bbox", limit=0, image_ids=Non
                                            r["scores"],
                                            r["masks"].astype(np.uint8))
         results.extend(image_results)
-
+    # 预测展示
+    pre_img_id = -1
+    num = 1
+    for d in results:
+        if d['image_id'] != pre_img_id:
+            # pre_img_id = d['image_id']
+            imgIds = coco.getImgIds(imgIds=[d['image_id']])
+            img = coco.loadImgs(imgIds[np.random.randint(0, len(imgIds))])[0]
+            img_path = 'F:/application/DeepLearningCode/Mask_RCNN/coco/val2014/' + img['file_name']
+            img_arr = imageio.imread(img_path)
+            plt.imshow(img_arr)
+            # plt.show()
+            plt.savefig('../../out_fig/{}_{}.jpg'.format(d['image_id'], num))
+            num += 1
+        mask = maskUtils.decode(d['segmentation'])
+        plt.imshow(mask, alpha=0.4)
+        # plt.show()
+        plt.savefig('../../out_fig/{}_{}.jpg'.format(d['image_id'], num))
+        num += 1
+    exit(666)
     # Load results. This modifies results with additional attributes.
     coco_results = coco.loadRes(results)
 
@@ -389,6 +410,40 @@ def evaluate_coco(model, dataset, coco, eval_type="bbox", limit=0, image_ids=Non
     print("Prediction time: {}. Average {}/image".format(
         t_prediction, t_prediction / len(image_ids)))
     print("Total time: ", time.time() - t_start)
+
+def evaluate_coco_self(model, dataset, coco, eval_type="bbox", limit=0, image_ids=None):
+    # Load image
+    img_path = '../../20210415_2.jpg'
+    image = imageio.imread(img_path)
+    # If grayscale. Convert to RGB for consistency.
+    if image.ndim != 3:
+        image = skimage.color.gray2rgb(image)
+    # If has an alpha channel, remove it for consistency
+    if image.shape[-1] == 4:
+        image = image[..., :3]
+
+    r = model.detect([image], verbose=0)[0]
+
+    # Convert results to COCO format
+    # Cast masks to uint8 because COCO tools errors out on bool
+    image_results = build_coco_results(dataset, [0],
+                                       r["rois"], r["class_ids"],
+                                       r["scores"],
+                                       r["masks"].astype(np.uint8))
+    # 预测展示
+    pre_img_id = -1
+    num = 1
+    for d in image_results:
+        plt.imshow(image)
+        # plt.show()
+        plt.savefig('../../out_fig/define_{}_{}_{}_ori.jpg'.format(d['image_id'], num, d['category_id']))
+        mask = maskUtils.decode(d['segmentation'])
+        plt.imshow(mask, alpha=0.4)
+        # plt.show()
+        plt.savefig('../../out_fig/define_{}_{}_{}.jpg'.format(d['image_id'], num, d['category_id']))
+        num += 1
+    exit(666)
+    pass
 
 
 ############################################################
@@ -405,7 +460,8 @@ if __name__ == '__main__':
     parser.add_argument("command",
                         metavar="<command>",
                         help="'train' or 'evaluate' on MS COCO")
-    parser.add_argument('--dataset', required=True,
+    parser.add_argument('--dataset', required=False,
+                        default=os.path.join(ROOT_DIR, "coco"),
                         metavar="/path/to/coco/",
                         help='Directory of the MS-COCO dataset')
     parser.add_argument('--year', required=False,
@@ -420,7 +476,7 @@ if __name__ == '__main__':
                         metavar="/path/to/logs/",
                         help='Logs and checkpoints directory (default=logs/)')
     parser.add_argument('--limit', required=False,
-                        default=500,
+                        default=3,
                         metavar="<image count>",
                         help='Images to use for evaluation (default=500)')
     parser.add_argument('--download', required=False,
@@ -528,7 +584,8 @@ if __name__ == '__main__':
         coco = dataset_val.load_coco(args.dataset, val_type, year=args.year, return_coco=True, auto_download=args.download)
         dataset_val.prepare()
         print("Running COCO evaluation on {} images.".format(args.limit))
-        evaluate_coco(model, dataset_val, coco, "bbox", limit=int(args.limit))
+        # evaluate_coco(model, dataset_val, coco, "bbox", limit=int(args.limit))
+        evaluate_coco_self(model, dataset_val, coco, "bbox", limit=int(args.limit))
     else:
         print("'{}' is not recognized. "
               "Use 'train' or 'evaluate'".format(args.command))
